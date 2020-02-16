@@ -14,6 +14,12 @@
 
 pthread_mutex_t out_lock;
 
+struct Node{
+    int type;
+    char str[1024];
+};
+
+
 void client(char* ip,int port)
 {
     int sock = socket(AF_INET,SOCK_DGRAM,0);
@@ -31,7 +37,8 @@ void client(char* ip,int port)
         ;//ERR_EXIT("connect");
 
     int ret = -1;
-    char buff[512] = {0}; 
+    struct Node node;
+    node.type = 1;//类型1,表示该报文为通信报文
     int first = 0,sl=0;
 
     while(1)
@@ -49,16 +56,17 @@ void client(char* ip,int port)
             printf("[%s %d]your message:\n",inet_ntoa(peer.sin_addr),ntohs(peer.sin_port));
             pthread_mutex_unlock(&out_lock);
         }
-        memset(buff,0,sizeof(buff));
-        if(fgets(buff,sizeof(buff),stdin) == NULL)
+        memset(node.str,0,sizeof(node.str));
+        if(fgets(node.str,sizeof(node.str),stdin) == NULL)
             ERR_EXIT("fgets");
-        send(sock,buff,strlen(buff),0);
+        send(sock,(void*)&node,sizeof(node),0);
     }
     close(sock);
 }
 
 void server(int port)
 {
+    struct Node node;
     int con = 0;
     int sock = socket(AF_INET,SOCK_DGRAM,0);
     if(sock < 0)
@@ -72,13 +80,12 @@ void server(int port)
     if(bind(sock,(struct sockaddr*)&local,sizeof(local)) < 0)
         ERR_EXIT("bind");
     int ret  = 0;
-    char buff[512] = {0};
     struct sockaddr_in peer;
     socklen_t peerlen = sizeof(peer);
 
     while(1){
-        memset(buff,0,sizeof(buff));
-        ret = recvfrom(sock,buff,1024,0,(struct sockaddr*)&peer,&peerlen);
+        memset((void*)&node,0,sizeof(node));
+        ret = recvfrom(sock,(void*)&node,1024,0,(struct sockaddr*)&peer,&peerlen);
         if(ret < 0){
             if(errno == EINTR)//信号中断
                 continue;
@@ -97,12 +104,12 @@ void server(int port)
                 }
                 pthread_mutex_lock(&out_lock);
                 fflush(stdout);
-                printf("accept request?(y/n)y\n");
+                //printf("accept request?(y/n)y\n");
                 printf("success:%s %d\n",inet_ntoa(peer.sin_addr),ntohs(peer.sin_port));
             }
-            else{
+            else if(node.type == 1){
                 char head[1024] = "sent msg:";
-                strcat(head,buff);
+                strcat(head,node.str);
                 pthread_mutex_lock(&out_lock);
                 fflush(stdout);
                 printf("[%s %d]%s",inet_ntoa(peer.sin_addr),ntohs(peer.sin_port),head);
